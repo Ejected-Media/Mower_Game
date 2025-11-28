@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>mower_game</title>
+    <style>
+        :root {
+            --bg: #222;
+            --screen-bg: #111;
+            --accent: #ffcc00;
+            --panel: #333;
+            --text-main: #eee;
+            --danger: #ef5350;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- GAME VIEW (16:9 Aspect Ratio Container) --- */
+        #viewport {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            flex: 1; /* Takes available space */
+            position: relative;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            background: var(--screen-bg);
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+            /* Aspect ratio enforced via JS resizing */
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        /* --- HUD --- */
+        #hud-overlay {
+            position: absolute;
+            top: 10px; left: 10px; right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .hud-badge {
+            background: rgba(0,0,0,0.8);
+            color: var(--accent);
+            padding: 5px 12px;
+            border: 1px solid #666;
+            font-weight: bold;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+
+        /* --- CONTROLS --- */
+        #controls-area {
+            background: var(--panel);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+            z-index: 20;
+        }
+
+        /* Speed Control (Throttle) */
+        .throttle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #222;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #444;
+        }
+        .throttle-label { font-size: 12px; color: #888; font-weight: bold; width: 50px; }
+        input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+
+        /* Gauges */
+        .status-row {
+            display: flex;
+            gap: 8px;
+            height: 18px;
+        }
+        .status-bar {
+            flex: 1;
+            background: #111;
+            border: 1px solid #555;
+            position: relative;
+        }
+        .fill { height: 100%; transition: width 0.2s; }
+        .fill.fuel { background: #29b6f6; width: 100%; }
+        .fill.bag { background: #ffa726; width: 0%; }
+        .fill.health { background: var(--danger); width: 100%; }
+        
+        /* Main Interface */
+        .interface-grid {
+            display: flex;
+            gap: 15px;
+            height: 140px;
+        }
+
+        /* D-Pad */
+        .dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 4px;
+            aspect-ratio: 1;
+            height: 100%;
+        }
+        .d-btn {
+            background: #444;
+            border: 2px solid #222;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #aaa;
+            cursor: pointer;
+            box-shadow: 0 3px 0 #222;
+        }
+        .d-btn:active { transform: translateY(3px); box-shadow: none; background: #555; color: #fff; }
+        .d-up { grid-column: 2; grid-row: 1; }
+        .d-left { grid-column: 1; grid-row: 2; }
+        .d-right { grid-column: 3; grid-row: 2; }
+        .d-down { grid-column: 2; grid-row: 3; }
+
+        /* Actions */
+        .actions {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .action-btn {
+            flex: 1;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+            box-shadow: 0 3px 0 rgba(0,0,0,0.3);
+        }
+        .action-btn:active { transform: translateY(3px); box-shadow: none; }
+        
+        .btn-sell { background: #2e7d32; border: 1px solid #1b5e20; }
+        .btn-fuel { background: #0277bd; border: 1px solid #01579b; }
+        .btn-menu { background: #f9a825; border: 1px solid #f57f17; color: black; text-shadow: none; }
+        
+        .btn-alert { animation: pulse 0.8s infinite alternate; }
+        @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.4); } }
+
+        /* Floating Text */
+        .floater {
+            position: absolute;
+            color: #4f4;
+            font-weight: bold;
+            font-size: 20px;
+            pointer-events: none;
+            text-shadow: 2px 2px 0 #000;
+            animation: floatUp 1s ease-out forwards;
+            z-index: 50;
+        }
+        @keyframes floatUp { to { transform: translateY(-50px); opacity: 0; } }
+
+        /* --- MENU OVERLAY --- */
+        #menu-modal {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 100;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #menu-modal.open { display: block; }
+        .menu-header { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 15px; }
+        .close-btn { background: #c62828; color: white; border: none; padding: 5px 15px; cursor: pointer; font-weight: bold; }
+        .menu-item {
+            background: #222; border: 1px solid #444; padding: 10px; margin-bottom: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .buy-btn { background: var(--accent); border: none; padding: 6px 12px; font-weight: bold; cursor: pointer; }
+        .buy-btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+
+    </style>
+</head>
+<body>
+
+    <div id="viewport">
+        <div id="game-container">
+            <canvas id="gameCanvas"></canvas>
+            <div id="hud-overlay">
+                <div class="hud-badge">$<span id="ui-money">0</span></div>
+                <div class="hud-badge" id="ui-map">Backyard</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls-area">
+        
+        <!-- Speed Control -->
+        <div class="throttle-container">
+            <span class="throttle-label">SPEED</span>
+            <!-- Range: 1 (Slow) to 10 (Fast) -->
+            <input type="range" id="throttle" min="1" max="10" value="5" oninput="game.updateSpeed(this.value)">
+        </div>
+
+        <!-- Status Bars -->
+        <div class="status-row">
+            <div class="status-bar">
+                <div class="fill fuel" id="bar-fuel"></div>
+            </div>
+            <div class="status-bar">
+                <div class="fill bag" id="bar-bag"></div>
+            </div>
+            <div class="status-bar">
+                <div class="fill health" id="bar-health"></div>
+            </div>
+        </div>
+
+        <!-- Interface -->
+        <div class="interface-grid">
+            <div class="dpad">
+                <div class="d-btn d-up" onpointerdown="game.input(0, -1)">▲</div>
+                <div class="d-btn d-left" onpointerdown="game.input(-1, 0)">◀</div>
+                <div class="d-btn d-right" onpointerdown="game.input(1, 0)">▶</div>
+                <div class="d-btn d-down" onpointerdown="game.input(0, 1)">▼</div>
+            </div>
+            <div class="actions">
+                <button class="action-btn btn-sell" id="btn-sell" onclick="game.sell()">
+                    <span>SELL BAG</span>
+                    <span id="val-bag">$0</span>
+                </button>
+                <button class="action-btn btn-fuel" id="btn-fuel" onclick="game.refuel()">
+                    <span>REFUEL</span>
+                    <span>$5</span>
+                </button>
+                <button class="action-btn btn-menu" onclick="toggleMenu()">
+                    <span>SHOP / MAPS</span>
+                    <span>≡</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MENU MODAL -->
+    <div id="menu-modal">
+        <div class="menu-header">
+            <h2 style="margin:0; font-size: 18px;">mower_game</h2>
+            <button class="close-btn" onclick="toggleMenu()">CLOSE</button>
+        </div>
+        
+        <div style="color:#888; font-size:12px; margin-bottom:5px;">LOCATIONS (16:9)</div>
+        <div id="list-maps"></div>
+        
+        <div style="color:#888; font-size:12px; margin-bottom:5px; margin-top:20px;">UPGRADES</div>
+        <div id="list-upgrades"></div>
+        
+        <button class="action-btn btn-fuel" style="margin-top:20px; width:100%" onclick="game.repair()">REPAIR HULL ($20)</button>
+    </div>
+
+    <script>
+        // --- CONFIG & DATA ---
+        
+        // 16:9 Aspect Ratio Maps
+        const MAPS = [
+            { id: 'yard', name: 'Backyard', w: 32, h: 18, rocks: 5, growth: 0.02, cost: 0, color: '#2d5a27' },
+            { id: 'park', name: 'City Park', w: 48, h: 27, rocks: 20, growth: 0.04, cost: 500, color: '#1b5e20' },
+            { id: 'golf', name: 'Golf Course', w: 64, h: 36, rocks: 50, growth: 0.08, cost: 5000, color: '#33691e' }
+        ];
+
+        const UPGRADES = [
+            { id: 'drone', name: 'Auto-Drone', cost: 250, desc: 'Roams and cuts grass', type: 'drone' },
+            { id: 'rider', name: 'Rider Hull', cost: 1000, desc: 'Bigger tank & bag', type: 'hull', tank: 300, bag: 100 },
+            { id: 'autosell', name: 'Auto-Seller', cost: 2000, desc: 'Auto-sells when full', type: 'tech' }
+        ];
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.container = document.getElementById('game-container');
+                this.viewport = document.getElementById('viewport');
+
+                this.money = 0;
+                this.map = MAPS[0];
+                this.owned = ['yard'];
+                this.drones = [];
+                this.particles = [];
+                
+                this.mower = {
+                    x: 0, y: 0, dx: 1, dy: 1,
+                    fuel: 100, maxFuel: 100,
+                    bag: 0, maxBag: 20,
+                    health: 100,
+                    throttle: 5, // 1-10
+                    moveTimer: 0,
+                    state: 'MOWING'
+                };
+
+                this.grid = [];
+                this.rocks = [];
+                this.tileSize = 20;
+
+                window.addEventListener('resize', () => this.resize());
+                window.addEventListener('keydown', (e) => {
+                    if(e.key==='ArrowUp') this.input(0,-1);
+                    if(e.key==='ArrowDown') this.input(0,1);
+                    if(e.key==='ArrowLeft') this.input(-1,0);
+                    if(e.key==='ArrowRight') this.input(1,0);
+                });
+            }
+
+            init() {
+                this.loadSave();
+                this.loadMap(this.map.id, true);
+                this.resize();
+                this.updateMenus();
+                requestAnimationFrame(() => this.loop());
+                setInterval(() => this.save(), 5000);
+            }
+
+            // Handles resizing to enforce 16:9 aspect ratio in the viewport
+            resize() {
+                const vw = this.viewport.clientWidth;
+                // Calculate height based on 16:9 ratio
+                let targetH = vw * (9/16);
+                let targetW = vw;
+
+                // Max sure it fits height-wise too
+                /* In a real app we might want to check window height, 
+                   but for this embedded view we prioritize width fit */
+                
+                this.container.style.width = targetW + 'px';
+                this.container.style.height = targetH + 'px';
+
+                // Calculate Tile Size to fit the grid perfectly into the container
+                // We want the grid to fill the 16:9 container
+                this.tileSize = targetW / this.map.w;
+                
+                this.canvas.width = targetW;
+                this.canvas.height = targetH;
+                
+                this.ctx.imageSmoothingEnabled = false;
+            }
+
+            updateSpeed(val) {
+                this.mower.throttle = parseInt(val);
+            }
+
+            // Converts Throttle (1-10) into Frames Per Move (High throttle = Low frames)
+            getSpeedDelay() {
+                // Throttle 1 = 20 frames delay (Slow)
+                // Throttle 10 = 2 frames delay (Fast)
+                return Math.max(2, 22 - (this.mower.throttle * 2));
+            }
+
+            loadMap(id, force = false) {
+                let m = MAPS.find(x => x.id === id);
+                if(!m) return;
+                
+                if(!force && this.map.id === id) return; // Already loaded
+                
+                this.map = m;
+                this.grid = [];
+                this.rocks = [];
+                
+                // Init Grid
+                for(let y=0; y<this.map.h; y++) {
+                    let row = [];
+                    for(let x=0; x<this.map.w; x++) row.push(2);
+                    this.grid.push(row);
+                }
+                
+                // Spawn Rocks
+                for(let i=0; i<this.map.rocks; i++) {
+                    this.rocks.push({x: rand(0, this.map.w), y: rand(0, this.map.h)});
+                }
+
+                this.mower.x = Math.floor(this.map.w/2);
+                this.mower.y = Math.floor(this.map.h/2);
+                this.resize();
+                toggleMenu(false); // Close menu if open
+            }
+
+            input(x, y) {
+                if(this.mower.state === 'NO_FUEL' || this.mower.state === 'BROKEN') return;
+                this.mower.dx = x;
+                this.mower.dy = y;
+                if(this.mower.state !== 'BAG_FULL') this.mower.state = 'MOWING';
+                // Visual feedback: immediate move
+                this.mower.moveTimer = 100; 
+            }
+
+            loop() {
+                // Growth Logic
+                if(Math.random() < this.map.growth) {
+                    let rx = rand(0, this.map.w);
+                    let ry = rand(0, this.map.h);
+                    if(this.grid[ry][rx] < 2) this.grid[ry][rx]++;
+                }
+
+                // Mower Logic
+                if(this.owned.includes('autosell') && this.mower.bag >= this.mower.maxBag) this.sell();
+
+                // Status Check
+                if(this.mower.health <= 0) this.mower.state = 'BROKEN';
+                else if(this.mower.fuel <= 0) this.mower.state = 'NO_FUEL';
+                else if(this.mower.bag >= this.mower.maxBag) this.mower.state = 'BAG_FULL';
+                else this.mower.state = 'MOWING';
+
+                if(this.mower.state === 'MOWING') {
+                    this.mower.moveTimer++;
+                    const delay = this.getSpeedDelay();
+                    
+                    if(this.mower.moveTimer >= delay) {
+                        this.mower.moveTimer = 0;
+                        this.moveMower();
+                    }
+                }
+
+                // Drone Logic
+                this.updateDrones();
+                
+                // Particles
+                this.updateParticles();
+
+                this.draw();
+                this.updateUI();
+
+                requestAnimationFrame(() => this.loop());
+            }
+
+            moveMower() {
+                let nx = this.mower.x + this.mower.dx;
+                let ny = this.mower.y + this.mower.dy;
+                let hit = false;
+
+                // Walls
+                if(nx < 0 || nx >= this.map.w) { this.mower.dx *= -1; hit = true; }
+                if(ny < 0 || ny >= this.map.h) { this.mower.dy *= -1; hit = true; }
+
+                // Rocks
+                if(!hit) {
+                    for(let r of this.rocks) {
+                        if(r.x === nx && r.y === ny) {
+                            this.mower.dx *= -1; this.mower.dy *= -1;
+                            this.mower.health -= (this.mower.throttle * 2); // Faster = More Damage!
+                            hit = true;
+                            this.spawnParticle(nx, ny, '#888');
+                            break;
+                        }
+                    }
+                }
+
+                if(!hit) {
+                    this.mower.x = nx; this.mower.y = ny;
+                    // Fuel burn based on throttle
+                    this.mower.fuel -= (0.05 * (this.mower.throttle/2));
+                    this.cut(nx, ny, true);
+                } else {
+                    if(Math.random()>0.5) this.mower.dx *= -1;
+                }
+            }
+
+            updateDrones() {
+                this.drones.forEach(d => {
+                    d.timer++;
+                    if(d.timer >= 15) {
+                        d.timer = 0;
+                        if(Math.random()<0.3) d.dx = Math.random()>0.5?1:-1;
+                        if(Math.random()<0.3) d.dy = Math.random()>0.5?1:-1;
+                        let nx = d.x + d.dx; 
+                        let ny = d.y + d.dy;
+                        if(nx >= 0 && nx < this.map.w && ny >= 0 && ny < this.map.h) {
+                            d.x = nx; d.y = ny;
+                            this.cut(nx, ny, false);
+                        } else {
+                            d.dx *= -1; d.dy *= -1;
+                        }
+                    }
+                });
+            }
+
+            cut(x, y, fillBag) {
+                if(this.grid[y][x] > 0) {
+                    this.grid[y][x] = 0;
+                    this.spawnParticle(x, y, '#4caf50');
+                    if(fillBag) this.mower.bag++;
+                    else this.money++;
+                }
+            }
+
+            spawnParticle(x, y, color) {
+                this.particles.push({
+                    x: x * this.tileSize + this.tileSize/2,
+                    y: y * this.tileSize + this.tileSize/2,
+                    vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5,
+                    life: 1.0, color: color
+                });
+            }
+
+            updateParticles() {
+                for(let i=this.particles.length-1; i>=0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx; p.y += p.vy; p.life -= 0.1;
+                    if(p.life <= 0) this.particles.splice(i, 1);
+                }
+            }
+
+            draw() {
+                // Map BG
+                this.ctx.fillStyle = '#051005';
+                this.ctx.fillRect(0,0, this.canvas.width, this.canvas.height);
+
+                // Grid
+                for(let y=0; y<this.map.h; y++) {
+                    for(let x=0; x<this.map.w; x++) {
+                        let v = this.grid[y][x];
+                        if(v === 0) continue; 
+                        
+                        this.ctx.fillStyle = (v===1
