@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mower Tycoon v4: Manual Override</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --panel: #1e1e1e;
+            --accent: #00e676; /* Bright Green */
+            --danger: #ff5252;
+            --text: #eceff1;
+            --btn-grad: linear-gradient(180deg, #37474f, #263238);
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Roboto', 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- VIEWPORT --- */
+        #game-wrapper {
+            flex: 1;
+            position: relative;
+            background: #0d1f0d;
+            overflow: hidden;
+            border-bottom: 2px solid #333;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* --- HUD --- */
+        #hud-top {
+            position: absolute;
+            top: 10px; left: 10px; right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .stat-badge {
+            background: rgba(0,0,0,0.85);
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #444;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .money-txt { color: #ffd700; font-size: 16px; }
+        .contract-txt { color: #81d4fa; font-size: 12px; text-transform: uppercase; }
+
+        .floater {
+            position: absolute;
+            color: var(--accent);
+            font-weight: 900;
+            pointer-events: none;
+            z-index: 5;
+            text-shadow: 1px 1px 0 #000;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+        @keyframes floatUp { 
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-40px) scale(1.5); opacity: 0; } 
+        }
+
+        /* --- CONTROL PANEL --- */
+        #interface {
+            height: 50vh; /* Slightly taller for controls */
+            background-color: var(--panel);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+        }
+
+        .tabs { display: flex; background: #111; }
+        .tab {
+            flex: 1;
+            padding: 15px 5px;
+            text-align: center;
+            cursor: pointer;
+            color: #666;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+        .tab.active {
+            color: white;
+            background: var(--panel);
+            border-bottom-color: var(--accent);
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: none;
+        }
+        .panel-content.active { display: block; }
+
+        /* DASHBOARD LAYOUT */
+        .dash-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /* D-PAD STYLES */
+        .control-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #181818;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #333;
+            position: relative;
+        }
+        
+        .dpad {
+            display: grid;
+            grid-template-columns: 60px 60px 60px;
+            grid-template-rows: 50px 50px 50px;
+            gap: 5px;
+        }
+
+        .d-btn {
+            background: #37474f;
+            border: 1px solid #455a64;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #90a4ae;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 4px 0 #263238;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .d-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #263238;
+            background: var(--accent);
+            color: black;
+        }
+        
+        #d-up { grid-column: 2; grid-row: 1; }
+        #d-left { grid-column: 1; grid-row: 2; }
+        #d-right { grid-column: 3; grid-row: 2; }
+        #d-down { grid-column: 2; grid-row: 3; }
+        
+        .control-label {
+            position: absolute;
+            top: 5px; left: 10px;
+            font-size: 10px; color: #555; text-transform: uppercase;
+        }
+
+        /* ACTION GRID */
+        .dash-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 10px;
+            height: 80px;
+        }
+
+        .dash-btn {
+            background: var(--btn-grad);
+            border: 1px solid #455a64;
+            border-radius: 8px;
+            padding: 5px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .dash-btn:active { transform: translateY(2px); }
+        .dash-btn.urgent { border-color: var(--danger); animation: pulse 1s infinite; }
+        
+        .dash-icon { font-size: 18px; margin-bottom: 4px; }
+        .dash-label { font-size: 9px; opacity: 0.8; text-align: center; }
+        .dash-bar { 
+            width: 80%; height: 4px; background: #000; margin-top: 6px; border-radius: 2px; overflow: hidden; 
+        }
+        .dash-fill { height: 100%; background: var(--accent); width: 50%; transition: width 0.3s; }
+
+        /* CARDS */
+        .card {
+            background: #263238;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #444;
+        }
+        .card.active-contract { border-left-color: var(--accent); background: #1b2e25; }
+        
+        .card-info h4 { margin: 0; font-size: 14px; color: #fff; }
+        .card-info p { margin: 3px 0 0; font-size: 11px; color: #90a4ae; }
+        
+        .btn-buy {
+            background: var(--accent);
+            color: #003300;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 11px;
+            cursor: pointer;
+            min-width: 70px;
+        }
+        .btn-buy:disabled { background: #444; color: #777; }
+        .btn-buy.owned { background: transparent; border: 1px solid #555; color: #888; }
+
+        @keyframes pulse { 0% { box-shadow: inset 0 0 0 0 var(--danger); } 50% { box-shadow: inset 0 0 10px 0 var(--danger); } 100% { box-shadow: inset 0 0 0 0 var(--danger); } }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud-top">
+            <div class="stat-badge">
+                <span id="ui-money" class="money-txt">$0</span>
+            </div>
+            <div class="stat-badge">
+                <span id="ui-contract" class="contract-txt">Backyard</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="interface">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('dash')">Command</div>
+            <div class="tab" onclick="switchTab('fleet')">Fleet & Tech</div>
+            <div class="tab" onclick="switchTab('contracts')">Contracts</div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="tab-dash" class="panel-content active">
+            <div class="dash-container">
+                
+                <!-- NEW: CONTROL PAD -->
+                <div class="control-area">
+                    <span class="control-label">Manual Override</span>
+                    <div class="dpad">
+                        <div class="d-btn" id="d-up" onpointerdown="game.setDir(0, -1)">▲</div>
+                        <div class="d-btn" id="d-left" onpointerdown="game.setDir(-1, 0)">◀</div>
+                        <div class="d-btn" id="d-right" onpointerdown="game.setDir(1, 0)">▶</div>
+                        <div class="d-btn" id="d-down" onpointerdown="game.setDir(0, 1)">▼</div>
+                    </div>
+                </div>
+
+                <!-- ACTIONS -->
+                <div class="dash-grid">
+                    <div class="dash-btn" id="btn-sell" onclick="game.sellClippings()">
+                        <div class="dash-icon">💰</div>
+                        <div class="dash-label">SELL ($<span id="val-bag-cash">0</span>)</div>
+                        <div class="dash-bar"><div class="dash-fill" id="bar-bag"></div></div>
+                    </div>
+                    <div class="dash-btn" id="btn-fuel" onclick="game.refuel()">
+                        <div class="dash-icon">⛽</div>
+                        <div class="dash-label">REFUEL ($5)</div>
+                        <div class="dash-bar"><div class="dash-fill" id="bar-fuel" style="background:#29b6f6"></div></div>
+                    </div>
+                    <div class="dash-btn" id="btn-repair" onclick="game.repair()">
+                        <div class="dash-icon">🔧</div>
+                        <div class="dash-label">REPAIR ($20)</div>
+                        <div class="dash-bar"><div class="dash-fill" id="bar-health" style="background:#ef5350"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FLEET & TECH -->
+        <div id="tab-fleet" class="panel-content">
+            <div id="list-fleet"></div>
+        </div>
+
+        <!-- CONTRACTS -->
+        <div id="tab-contracts" class="panel-content">
+            <div id="list-contracts"></div>
+        </div>
+    </div>
+
+    <script>
+        const CONTRACTS = [
+            { id: 'backyard', name: 'Mom\'s Backyard', payout: 1, w: 20, h: 20, rocks: 5, growth: 0.02, cost: 0, color: '#2d5a27' },
+            { id: 'park', name: 'City Park', payout: 2, w: 30, h: 25, rocks: 15, growth: 0.05, cost: 500, color: '#1b5e20' },
+            { id: 'golf', name: 'Sunnyvale Golf', payout: 5, w: 40, h: 40, rocks: 30, growth: 0.08, cost: 5000, color: '#33691e' },
+            { id: 'mars', name: 'Terraform Mars', payout: 15, w: 40, h: 40, rocks: 80, growth: 0.15, cost: 25000, color: '#bf360c' }
+        ];
+
+        const UPGRADES = [
+            { id: 'drone_mk1', name: 'Drone Bot Mk1', type: 'drone', cost: 200, speed: 25, desc: 'Slow, dumb, but helpful.' },
+            { id: 'drone_mk2', name: 'Drone Bot Mk2', type: 'drone', cost: 1000, speed: 15, desc: 'Faster autonomous mowing.' },
+            
+            // HULLS - Note: speeds are higher numbers = slower movement (frames per move)
+            { id: 'hull_rider', name: 'Rider Chassis', type: 'hull', cost: 800, tank: 300, bag: 100, speed: 10, width: 2 },
+            { id: 'hull_mech', name: 'Mech Walker', type: 'hull', cost: 8000, tank: 1000, bag: 500, speed: 6, width: 3 },
+            
+            { id: 'tech_auto', name: 'Auto-Sell Uplink', type: 'tech', cost: 2000, desc: 'Empty bag automatically.' }
+        ];
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.wrapper = document.getElementById('game-wrapper');
+
+                this.tileSize = 24;
+                
+                this.money = 0;
+                this.contractId = 'backyard';
+                this.drones = [];
+                this.particles = [];
+                this.ownedItems = [];
+
+                this.mower = {
+                    x: 0, y: 0, dx: 1, dy: 1,
+                    fuel: 100, maxFuel: 100,
+                    bag: 0, maxBag: 20,
+                    health: 100,
+                    // SPEED CHANGE: Increased to 15 (slower)
+                    speed: 15, 
+                    moveTimer: 0,
+                    width: 0,
+                    state: 'IDLE'
+                };
+
+                this.grid = [];
+                this.rocks = [];
+                this.cols = 0;
+                this.rows = 0;
+                this.camX = 0;
+                this.camY = 0;
+
+                this.loop = this.loop.bind(this);
+                
+                // Keyboard Binding
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowUp') this.setDir(0, -1);
+                    if (e.key === 'ArrowDown') this.setDir(0, 1);
+                    if (e.key === 'ArrowLeft') this.setDir(-1, 0);
+                    if (e.key === 'ArrowRight') this.setDir(1, 0);
+                });
+            }
+
+            init() {
+                this.loadContract('backyard');
+                this.loadSave();
+                this.updateMenus();
+                requestAnimationFrame(this.loop);
+                setInterval(() => this.save(), 5000);
+            }
+
+            setDir(x, y) {
+                // Manual Override
+                if (this.mower.state === 'NO_FUEL' || this.mower.state === 'BROKEN') return;
+                
+                this.mower.dx = x;
+                this.mower.dy = y;
+                
+                // Force state to mowing if bag not full
+                if (this.mower.state !== 'BAG_FULL') {
+                    this.mower.state = 'MOWING';
+                }
+                
+                // Visual feedback (instant move on next tick)
+                this.mower.moveTimer = this.mower.speed; 
+            }
+
+            loadContract(id) {
+                const c = CONTRACTS.find(x => x.id === id);
+                this.contractId = id;
+                this.cols = c.w;
+                this.rows = c.h;
+                this.grid = [];
+                this.rocks = [];
+                for(let y=0; y<this.rows; y++) {
+                    let row = [];
+                    for(let x=0; x<this.cols; x++) row.push(2);
+                    this.grid.push(row);
+                }
+                for(let i=0; i<c.rocks; i++) {
+                    this.rocks.push({ x: rand(0, this.cols), y: rand(0, this.rows) });
+                }
+                this.mower.x = Math.floor(this.cols/2);
+                this.mower.y = Math.floor(this.rows/2);
+                this.updateMenus();
+            }
+
+            loop() {
+                const contract = CONTRACTS.find(c => c.id === this.contractId);
+
+                // Growth
+                if (Math.random() < contract.growth) {
+                    let rx = rand(0, this.cols);
+                    let ry = rand(0, this.rows);
+                    if (this.grid[ry][rx] < 2) this.grid[ry][rx]++;
+                }
+
+                // Mower
+                this.updateMower();
+                this.updateDrones();
+                this.updateParticles();
+                this.draw();
+                this.updateHUD();
+
+                requestAnimationFrame(this.loop);
+            }
+
+            updateMower() {
+                if (this.ownedItems.includes('tech_auto') && this.mower.bag >= this.mower.maxBag) {
+                    this.sellClippings();
+                }
+
+                if (this.mower.health <= 0) { this.mower.state = 'BROKEN'; return; }
+                if (this.mower.fuel <= 0) { this.mower.state = 'NO_FUEL'; return; }
+                if (this.mower.bag >= this.mower.maxBag) { this.mower.state = 'BAG_FULL'; return; }
+
+                this.mower.state = 'MOWING';
+
+                this.mower.moveTimer++;
+                if (this.mower.moveTimer >= this.mower.speed) {
+                    this.mower.moveTimer = 0;
+                    
+                    let nx = this.mower.x + this.mower.dx;
+                    let ny = this.mower.y + this.mower.dy;
+                    let hit = false;
+
+                    // Walls
+                    if (nx < 0 || nx >= this.cols) { this.mower.dx *= -1; hit = true; }
+                    if (ny < 0 || ny >= this.rows) { this.mower.dy *= -1; hit = true; }
+
+                    // Rocks
+                    if (!hit) {
+                        for(let r of this.rocks) {
+                            if (r.x === nx && r.y === ny) {
+                                this.mower.health -= 15;
+                                this.mower.dx *= -1;
+                                this.mower.dy *= -1;
+                                this.spawnParticle(nx, ny, '#aaa', 5);
+                                hit = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hit) {
+                        this.mower.x = nx;
+                        this.mower.y = ny;
+                        this.mower.fuel -= 0.15; // Slightly less fuel consumption due to slower speed
+                        this.cutGrass(this.mower.x, this.mower.y, true);
+                        if (this.mower.width > 0) {
+                            this.cutGrass(this.mower.x+1, this.mower.y, true);
+                            if (this.mower.width > 2) this.cutGrass(this.mower.x-1, this.mower.y, true);
+                        }
+                    } else {
+                        if (Math.random() > 0.5) this.mower.dx *= -1;
+                    }
+                }
+            }
+
+            updateDrones() {
+                this.drones.forEach(d => {
+                    d.timer++;
+                    if (d.timer >= d.speed) {
+                        d.timer = 0;
+                        if (Math.random() < 0.2) d.dx = (Math.random() < 0.5 ? -1 : 1);
+                        if (Math.random() < 0.2) d.dy = (Math.random() < 0.5 ? -1 : 1);
+                        let nx = d.x + d.dx;
+                        let ny = d.y + d.dy;
+                        if (nx >= 0 && nx < this.cols && ny >= 0 && ny < this.rows) {
+                            d.x = nx; d.y = ny;
+                            this.cutGrass(nx, ny, false);
+                        } else {
+                            d.dx *= -1; d.dy *= -1;
+                        }
+                    }
+                });
+            }
+
+            cutGrass(x, y, fillBag) {
+                if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return;
+                if (this.grid[y][x] > 0) {
+                    this.grid[y][x] = 0;
+                    this.spawnParticle(x, y, '#00e676', 3);
+                    if (fillBag) this.mower.bag++;
+                    else {
+                        const c = CONTRACTS.find(x => x.id === this.contractId);
+                        this.money += Math.ceil(c.payout * 0.2); 
+                    }
+                }
+            }
+
+            spawnParticle(x, y, color, count) {
+                for(let i=0; i<count; i++) {
+                    this.particles.push({
+                        x: x * this.tileSize + this.tileSize/2,
+                        y: y * this.tileSize + this.tileSize/2,
+                        vx: (Math.random()-0.5) * 4,
+                        vy: (Math.random()-0.5) * 4,
+                        life: 1.0,
+                        color: color
+                    });
+                }
+            }
+
+            updateParticles() {
+                for(let i=this.particles.length-1; i>=0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx; p.y += p.vy;
+                    p.life 
