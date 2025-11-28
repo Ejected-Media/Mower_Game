@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mower Tycoon v3: Fleet Command</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --panel: #1e1e1e;
+            --accent: #00e676; /* Bright Green */
+            --danger: #ff5252;
+            --text: #eceff1;
+            --btn-grad: linear-gradient(180deg, #37474f, #263238);
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Roboto', 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- VIEWPORT --- */
+        #game-wrapper {
+            flex: 1;
+            position: relative;
+            background: #0d1f0d;
+            overflow: hidden;
+            border-bottom: 2px solid #333;
+        }
+
+        canvas {
+            display: block;
+            /* Canvas is positioned absolutely within wrapper for scrolling/camera */
+        }
+
+        /* --- HUD --- */
+        #hud-top {
+            position: absolute;
+            top: 10px; left: 10px; right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .stat-badge {
+            background: rgba(0,0,0,0.85);
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #444;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .money-txt { color: #ffd700; font-size: 16px; }
+        .contract-txt { color: #81d4fa; font-size: 12px; text-transform: uppercase; }
+
+        /* Floating text */
+        .floater {
+            position: absolute;
+            color: var(--accent);
+            font-weight: 900;
+            pointer-events: none;
+            z-index: 5;
+            text-shadow: 1px 1px 0 #000;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+        @keyframes floatUp { 
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-40px) scale(1.5); opacity: 0; } 
+        }
+
+        /* --- CONTROL PANEL --- */
+        #interface {
+            height: 45vh;
+            background-color: var(--panel);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Nav Tabs */
+        .tabs { display: flex; background: #111; }
+        .tab {
+            flex: 1;
+            padding: 15px 5px;
+            text-align: center;
+            cursor: pointer;
+            color: #666;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+        .tab.active {
+            color: white;
+            background: var(--panel);
+            border-bottom-color: var(--accent);
+        }
+
+        /* Panel Content */
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: none;
+        }
+        .panel-content.active { display: block; }
+
+        /* Dashboard Grid */
+        .dash-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .dash-btn {
+            background: var(--btn-grad);
+            border: 1px solid #455a64;
+            border-radius: 8px;
+            padding: 12px 5px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .dash-btn:active { transform: translateY(2px); }
+        .dash-btn.urgent { border-color: var(--danger); animation: pulse 1s infinite; }
+        
+        .dash-icon { font-size: 18px; margin-bottom: 4px; }
+        .dash-label { font-size: 10px; opacity: 0.8; }
+        .dash-bar { 
+            width: 80%; height: 4px; background: #000; margin-top: 6px; border-radius: 2px; overflow: hidden; 
+        }
+        .dash-fill { height: 100%; background: var(--accent); width: 50%; transition: width 0.3s; }
+
+        /* List Items (Upgrades/Contracts) */
+        .card {
+            background: #263238;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #444;
+        }
+        .card.active-contract { border-left-color: var(--accent); background: #1b2e25; }
+        
+        .card-info h4 { margin: 0; font-size: 14px; color: #fff; }
+        .card-info p { margin: 3px 0 0; font-size: 11px; color: #90a4ae; }
+        
+        .btn-buy {
+            background: var(--accent);
+            color: #003300;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 11px;
+            cursor: pointer;
+            min-width: 70px;
+        }
+        .btn-buy:disabled { background: #444; color: #777; }
+        .btn-buy.owned { background: transparent; border: 1px solid #555; color: #888; }
+
+        @keyframes pulse { 0% { box-shadow: inset 0 0 0 0 var(--danger); } 50% { box-shadow: inset 0 0 10px 0 var(--danger); } 100% { box-shadow: inset 0 0 0 0 var(--danger); } }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="hud-top">
+            <div class="stat-badge">
+                <span id="ui-money" class="money-txt">$0</span>
+            </div>
+            <div class="stat-badge">
+                <span id="ui-contract" class="contract-txt">Backyard</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="interface">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('dash')">Command</div>
+            <div class="tab" onclick="switchTab('fleet')">Fleet & Tech</div>
+            <div class="tab" onclick="switchTab('contracts')">Contracts</div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="tab-dash" class="panel-content active">
+            <div class="dash-grid">
+                <div class="dash-btn" id="btn-sell" onclick="game.sellClippings()">
+                    <div class="dash-icon">💰</div>
+                    <div class="dash-label">SELL ($<span id="val-bag-cash">0</span>)</div>
+                    <div class="dash-bar"><div class="dash-fill" id="bar-bag"></div></div>
+                </div>
+                <div class="dash-btn" id="btn-fuel" onclick="game.refuel()">
+                    <div class="dash-icon">⛽</div>
+                    <div class="dash-label">REFUEL ($5)</div>
+                    <div class="dash-bar"><div class="dash-fill" id="bar-fuel" style="background:#29b6f6"></div></div>
+                </div>
+                <div class="dash-btn" id="btn-repair" onclick="game.repair()">
+                    <div class="dash-icon">🔧</div>
+                    <div class="dash-label">REPAIR ($20)</div>
+                    <div class="dash-bar"><div class="dash-fill" id="bar-health" style="background:#ef5350"></div></div>
+                </div>
+            </div>
+            <div style="padding: 10px; background: #222; border-radius: 6px; font-size: 12px; color: #aaa;">
+                <strong>Status Log:</strong> <span id="log-text">System initialized.</span>
+            </div>
+        </div>
+
+        <!-- FLEET & TECH -->
+        <div id="tab-fleet" class="panel-content">
+            <div id="list-fleet"></div>
+        </div>
+
+        <!-- CONTRACTS -->
+        <div id="tab-contracts" class="panel-content">
+            <div id="list-contracts"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA DEFS ---
+
+        const CONTRACTS = [
+            { id: 'backyard', name: 'Mom\'s Backyard', payout: 1, w: 20, h: 20, rocks: 5, growth: 0.02, cost: 0, color: '#2d5a27' },
+            { id: 'park', name: 'City Park', payout: 2, w: 40, h: 30, rocks: 20, growth: 0.05, cost: 500, color: '#1b5e20' },
+            { id: 'golf', name: 'Sunnyvale Golf', payout: 5, w: 50, h: 50, rocks: 40, growth: 0.08, cost: 5000, color: '#33691e' },
+            { id: 'mars', name: 'Terraform Mars', payout: 15, w: 40, h: 40, rocks: 100, growth: 0.15, cost: 25000, color: '#bf360c' }
+        ];
+
+        const UPGRADES = [
+            // FLEET
+            { id: 'drone_mk1', name: 'Drone Bot Mk1', type: 'drone', cost: 200, speed: 20, desc: 'Slow, dumb, but helpful.' },
+            { id: 'drone_mk2', name: 'Drone Bot Mk2', type: 'drone', cost: 1000, speed: 10, desc: 'Faster autonomous mowing.' },
+            { id: 'drone_mk3', name: 'Drone Bot Mk3', type: 'drone', cost: 5000, speed: 5, desc: 'High-speed cutting unit.' },
+            
+            // HULLS
+            { id: 'hull_rider', name: 'Rider Chassis', type: 'hull', cost: 800, tank: 300, bag: 100, speed: 5, width: 2 },
+            { id: 'hull_mech', name: 'Mech Walker', type: 'hull', cost: 8000, tank: 1000, bag: 500, speed: 2, width: 3 },
+            
+            // TECH
+            { id: 'tech_auto', name: 'Auto-Sell Uplink', type: 'tech', cost: 2000, desc: 'Empty bag automatically.' }
+        ];
+
+        // --- GAME ENGINE ---
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.wrapper = document.getElementById('game-wrapper');
+
+                this.tileSize = 24; // Bigger tiles for better visibility
+                
+                // State
+                this.money = 0;
+                this.contractId = 'backyard';
+                this.drones = []; // Array of drone objects
+                this.particles = [];
+                this.ownedItems = []; // Upgrades/Hulls bought
+
+                this.mower = {
+                    x: 0, y: 0, dx: 1, dy: 1,
+                    fuel: 100, maxFuel: 100,
+                    bag: 0, maxBag: 20,
+                    health: 100,
+                    speed: 8, // Frames per move
+                    moveTimer: 0,
+                    width: 0, // Extra cutting width
+                    state: 'IDLE'
+                };
+
+                // Grid
+                this.grid = [];
+                this.rocks = [];
+                this.cols = 0;
+                this.rows = 0;
+
+                // Camera
+                this.camX = 0;
+                this.camY = 0;
+
+                this.loop = this.loop.bind(this);
+            }
+
+            init() {
+                this.loadContract('backyard');
+                this.loadSave();
+                this.updateMenus();
+                requestAnimationFrame(this.loop);
+                
+                // Save Loop
+                setInterval(() => this.save(), 5000);
+            }
+
+            loadContract(id) {
+                const c = CONTRACTS.find(x => x.id === id);
+                this.contractId = id;
+                this.cols = c.w;
+                this.rows = c.h;
+                
+                // Reset Grid
+                this.grid = [];
+                this.rocks = [];
+                for(let y=0; y<this.rows; y++) {
+                    let row = [];
+                    for(let x=0; x<this.cols; x++) row.push(2); // 2 = Tall grass
+                    this.grid.push(row);
+                }
+
+                // Rocks
+                for(let i=0; i<c.rocks; i++) {
+                    this.rocks.push({ x: rand(0, this.cols), y: rand(0, this.rows) });
+                }
+
+                // Reset Mower Pos
+                this.mower.x = Math.floor(this.cols/2);
+                this.mower.y = Math.floor(this.rows/2);
+                
+                this.log(`Arrived at ${c.name}`);
+                this.updateMenus();
+            }
+
+            loop() {
+                const contract = CONTRACTS.find(c => c.id === this.contractId);
+
+                // 1. Growth
+                if (Math.random() < contract.growth) {
+                    let rx = rand(0, this.cols);
+                    let ry = rand(0, this.rows);
+                    if (this.grid[ry][rx] < 2) this.grid[ry][rx]++;
+                }
+
+                // 2. Mower Logic
+                this.updateMower();
+
+                // 3. Drone Logic
+                this.updateDrones();
+
+                // 4. Particles
+                this.updateParticles();
+
+                // 5. Render
+                this.draw();
+
+                // 6. UI Updates (every frame? optimized?)
+                this.updateHUD();
+
+                requestAnimationFrame(this.loop);
+            }
+
+            updateMower() {
+                // Automation Checks
+                if (this.ownedItems.includes('tech_auto') && this.mower.bag >= this.mower.maxBag) {
+                    this.sellClippings();
+                }
+
+                // Status Check
+                if (this.mower.health <= 0) { this.mower.state = 'BROKEN'; return; }
+                if (this.mower.fuel <= 0) { this.mower.state = 'NO_FUEL'; return; }
+                if (this.mower.bag >= this.mower.maxBag) { this.mower.state = 'BAG_FULL'; return; }
+
+                this.mower.state = 'MOWING';
+
+                // Move Timer
+                this.mower.moveTimer++;
+                if (this.mower.moveTimer >= this.mower.speed) {
+                    this.mower.moveTimer = 0;
+                    
+                    // Calc Next Pos
+                    let nx = this.mower.x + this.mower.dx;
+                    let ny = this.mower.y + this.mower.dy;
+                    let hit = false;
+
+                    // Walls
+                    if (nx < 0 || nx >= this.cols) { this.mower.dx *= -1; hit = true; }
+                    if (ny < 0 || ny >= this.rows) { this.mower.dy *= -1; hit = true; }
+
+                    // Rocks
+                    if (!hit) {
+                        for(let r of this.rocks) {
+                            if (r.x === nx && r.y === ny) {
+                                this.mower.health -= 15;
+                                this.mower.dx *= -1;
+                                this.mower.dy *= -1;
+                                this.spawnParticle(nx, ny, '#aaa', 5);
+                                hit = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hit) {
+                        this.mower.x = nx;
+                        this.mower.y = ny;
+                        this.mower.fuel -= 0.2;
+                        this.cutGrass(this.mower.x, this.mower.y, true);
+                        
+                        // Extra Width
+                        if (this.mower.width > 0) {
+                            // Dumb width: just cut neighbors
+                            this.cutGrass(this.mower.x+1, this.mower.y, true);
+                            if (this.mower.width > 2) this.cutGrass(this.mower.x-1, this.mower.y, true);
+                        }
+                    } else {
+                        // Change direction randomly on hit
+                        if (Math.random() > 0.5) this.mower.dx *= -1;
+                    }
+                }
+            }
+
+            updateDrones() {
+                this.drones.forEach(d => {
+                    d.timer++;
+                    if (d.timer >= d.speed) {
+                        d.timer = 0;
+                        // Random walk
+                        if (Math.random() < 0.2) d.dx = (Math.random() < 0.5 ? -1 : 1);
+                        if (Math.random() < 0.2) d.dy = (Math.random() < 0.5 ? -1 : 1);
+                        
+                        let nx = d.x + d.dx;
+                        let ny = d.y + d.dy;
+
+                        // Bounds
+                        if (nx >= 0 && nx < this.cols && ny >= 0 && ny < this.rows) {
+                            d.x = nx; 
+                            d.y = ny;
+                            this.cutGrass(nx, ny, false); // False = doesn't fill bag
+                        } else {
+                            d.dx *= -1; 
+                            d.dy *= -1;
+                        }
+                    }
+                });
+            }
+
+            cutGrass(x, y, fillBag) {
+                if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return;
+                
+                if (this.grid[y][x] > 0) {
+                    this.grid[y][x] = 0;
+                    this.spawnParticle(x, y, '#00e676', 3);
+                    
+                    if (fillBag) this.mower.bag++;
+                    else {
+                        // Drones generate instant cash (small amount)
+                        const c = CONTRACTS.find(x => x.id === this.contractId);
+                        this.money += Math.ceil(c.payout * 0.2); 
+                    }
+                }
+            }
+
+            spawnParticle(x, y, color, count) {
+                for(let i=0; i<count; i++) {
+                    this.particles.push({
+                        x: x * this.tileSize + this.tileSize/2,
+                        y: y * this.tileSize + this.tileSize/2,
+                        vx: (Math.random()-0.5) * 4,
+                        vy: (Math.random()-0.5) * 4,
+                        life: 1.0,
+                        color: color
+                    });
+                }
+            }
+
+            updateParticles() {
+                for(let i=this.particles.length-1; i>=0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.05;
+                    if (p.life <= 0) this.particles.splice(i, 1);
+                }
+            }
+
+            draw() {
+                // Resize Canvas to Window
+                const w = this.wrapper.clientWidth;
+                const h = this.wrapper.clientHeight;
+                if (this.canvas.width !== w || this.canvas.height !== h) {
+                    this.canvas.width = w;
+                    this.canvas.height = h;
+                    this.ctx.imageSmoothingEnabled = false;
+                }
+
+                // Calc Camera (Center on Mower)
+                let targetX = (this.mower.x * this.tileSize) - (w/2);
+                let targetY = (this.mower.y * this.tileSize) - (h/2);
+                
+                // Smooth Lerp
+                this.camX += (targetX - this.camX) * 0.1;
+                this.camY += (targetY - this.camY) * 0.1;
+
+                this.ctx.save();
+                this.ctx.translate(-Math.floor(this.camX), -Math.floor(this.camY));
+
+                // 1. Map Background
+                this.ctx.fillStyle = '#051005';
+                this.ctx.fillRect(0,0, this.cols*this.tileSize, this.rows*this.tileSize);
+
+                // 2. Tiles
+                const c = CONTRACTS.find(x => x.id === this.contractId);
+                for(let y=0; y<this.rows; y++) {
+                    // Optimization: Only draw visible? (Skip for now, grids are small enough)
+                    for(let x=0; x<this.cols; x++) {
+                        let val = this.grid[y][x];
+                        if (val === 0) {
+                             this.ctx.fillStyle = '#111'; // Dirt/Cut
+                             this.ctx.fillRect(x*this.tileSize, y*this.tileSize, this.tileSize, this.tileSize);
+                             this.ctx.strokeStyle = '#222';
+                             this.ctx.strokeRect(x*this
