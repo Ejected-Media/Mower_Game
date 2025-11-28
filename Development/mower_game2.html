@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mower Tycoon: Evolution</title>
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --panel: #2a2a2a;
+            --accent: #ffcc00;
+            --danger: #ff4444;
+            --success: #44ff44;
+            --text: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', monospace;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- VISUALS --- */
+        #game-view {
+            flex: 1; /* Takes remaining height */
+            position: relative;
+            background: #113311;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border-bottom: 2px solid #555;
+        }
+
+        canvas {
+            box-shadow: 0 0 15px #000;
+            image-rendering: pixelated;
+        }
+
+        /* --- HUD --- */
+        #hud-top {
+            position: absolute;
+            top: 10px; left: 10px; right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        
+        .stat-box {
+            background: rgba(0,0,0,0.8);
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        #money-display { color: var(--accent); font-size: 18px; }
+
+        /* Floating text for earnings */
+        .floater {
+            position: absolute;
+            color: var(--success);
+            font-weight: bold;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+        }
+        @keyframes floatUp { to { transform: translateY(-30px); opacity: 0; } }
+
+        /* --- CONTROLS --- */
+        #interface {
+            height: 50vh;
+            background-color: var(--panel);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: #222;
+        }
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            color: #888;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+        .tab.active {
+            border-bottom-color: var(--accent);
+            color: white;
+            background: #333;
+        }
+
+        /* Panels */
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: none;
+        }
+        .panel-content.active { display: flex; flex-direction: column; gap: 10px; }
+
+        /* Operation Cards */
+        .ops-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+        }
+        .op-btn {
+            background: #333;
+            border: 1px solid #555;
+            padding: 15px 5px;
+            border-radius: 6px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+        .op-btn:active { background: #444; transform: scale(0.98); }
+        .op-btn.alert { border-color: var(--danger); animation: pulseRed 1s infinite; }
+        .op-val { font-size: 10px; margin-top: 5px; color: #aaa; }
+
+        @keyframes pulseRed { 0% { background: #333; } 50% { background: #522; } 100% { background: #333; } }
+
+        /* Upgrade/Hull List */
+        .list-item {
+            background: #252525;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .item-details h4 { margin: 0; font-size: 14px; color: #fff; }
+        .item-details p { margin: 3px 0 0; font-size: 11px; color: #888; }
+        
+        .buy-btn {
+            background: var(--accent);
+            color: black;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+            min-width: 70px;
+        }
+        .buy-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
+        .buy-btn.owned { background: var(--success); color: black; pointer-events: none; }
+
+        /* Log */
+        #log-area {
+            height: 30px;
+            background: #111;
+            font-size: 10px;
+            color: #888;
+            padding: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-top: 1px solid #444;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-view">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="hud-top">
+            <div class="stat-box" id="money-display">$0</div>
+            <div class="stat-box" id="status-display">SYSTEM OK</div>
+        </div>
+    </div>
+
+    <div id="interface">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('ops')">Operations</div>
+            <div class="tab" onclick="switchTab('hulls')">Hulls</div>
+            <div class="tab" onclick="switchTab('upgrades')">Systems</div>
+        </div>
+
+        <!-- OPERATIONS PANEL -->
+        <div id="panel-ops" class="panel-content active">
+            <div class="ops-grid">
+                <div class="op-btn" id="btn-sell" onclick="game.sellClippings()">
+                    <span>EMPTY BAG</span>
+                    <span class="op-val" id="val-bag">0%</span>
+                </div>
+                <div class="op-btn" id="btn-fuel" onclick="game.refuel()">
+                    <span>REFUEL ($5)</span>
+                    <span class="op-val" id="val-fuel">100%</span>
+                </div>
+                <div class="op-btn" id="btn-repair" onclick="game.repair()">
+                    <span>REPAIR ($10)</span>
+                    <span class="op-val" id="val-health">100%</span>
+                </div>
+            </div>
+            <div style="margin-top: 10px; color: #888; font-size: 11px;">
+                <p>Mower Status: <span id="mower-state-text" style="color:white">Running</span></p>
+                <p>Hull Class: <span id="hull-name-text" style="color:var(--accent)">Basic Push</span></p>
+            </div>
+        </div>
+
+        <!-- HULLS PANEL -->
+        <div id="panel-hulls" class="panel-content">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- UPGRADES PANEL -->
+        <div id="panel-upgrades" class="panel-content">
+            <!-- Populated by JS -->
+        </div>
+
+        <div id="log-area">Welcome to Mower Tycoon v2.0...</div>
+    </div>
+
+    <script>
+        // --- GAME DATA ---
+
+        const HULLS = [
+            { id: 'push', name: 'Rusty Push Mower', cost: 0, speed: 6, tank: 100, bag: 20, color: '#A0522D', width: 0 },
+            { id: 'rider', name: 'LawnKing Rider', cost: 500, speed: 4, tank: 300, bag: 100, color: '#DC143C', width: 4 },
+            { id: 'zero', name: 'Zero-Turn Pro', cost: 2500, speed: 2, tank: 600, bag: 300, color: '#FFD700', width: 6 },
+            { id: 'hover', name: 'Grav-Mow 3000', cost: 10000, speed: 1, tank: 1000, bag: 1000, color: '#00FFFF', width: 2, fly: true }
+        ];
+
+        const UPGRADES = [
+            { id: 'blade_sharpen', name: 'Diamond File', cost: 100, desc: 'Grass sells for +50%', type: 'eco_mult', val: 0.5 },
+            { id: 'auto_sell', name: 'Auto-Bagger', cost: 1500, desc: 'Automatically sells when full', type: 'auto_sell' },
+            { id: 'auto_fuel', name: 'Solar Roof', cost: 3000, desc: 'Automatically refuels when empty', type: 'auto_fuel' },
+            { id: 'shield', name: 'Rock Guard', cost: 800, desc: 'Take 50% less damage from rocks', type: 'defense' }
+        ];
+
+        // --- GAME ENGINE ---
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                
+                // Config
+                this.tileSize = 15;
+                this.gridW = 25;
+                this.gridH = 20;
+
+                // State
+                this.money = 0;
+                this.grid = []; // 0=cut, 1=med, 2=tall
+                this.rocks = [];
+                
+                this.mower = {
+                    x: 0, y: 0, 
+                    dx: 1, dy: 1,
+                    hullId: 'push',
+                    fuel: 100,
+                    bag: 0,
+                    health: 100,
+                    moveTimer: 0,
+                    state: 'IDLE' // IDLE, MOWING, ERROR
+                };
+
+                this.ownedHulls = ['push'];
+                this.ownedUpgrades = [];
+
+                this.lastTick = 0;
+            }
+
+            init() {
+                this.resize();
+                this.loadSave(); // Try to load
+                
+                if (this.grid.length === 0) this.resetGrid();
+
+                this.renderHulls();
+                this.renderUpgrades();
+                
+                requestAnimationFrame((t) => this.loop(t));
+                setInterval(() => this.saveGame(), 5000); // Auto save
+            }
+
+            resize() {
+                this.canvas.width = this.gridW * this.tileSize;
+                this.canvas.height = this.gridH * this.tileSize;
+            }
+
+            resetGrid() {
+                this.grid = [];
+                this.rocks = [];
+                for(let y=0; y<this.gridH; y++) {
+                    let row = [];
+                    for(let x=0; x<this.gridW; x++) {
+                        row.push(2);
+                    }
+                    this.grid.push(row);
+                }
+                // Spawn Rocks
+                for(let i=0; i<8; i++) {
+                    this.rocks.push({
+                        x: Math.floor(Math.random()*this.gridW),
+                        y: Math.floor(Math.random()*this.gridH)
+                    });
+                }
+            }
+
+            getHull() {
+                return HULLS.find(h => h.id === this.mower.hullId);
+            }
+
+            loop(timestamp) {
+                // Growth (Nature Loop)
+                if (Math.random() < 0.05) {
+                    let rx = Math.floor(Math.random() * this.gridW);
+                    let ry = Math.floor(Math.random() * this.gridH);
+                    if (this.grid[ry][rx] < 2) this.grid[ry][rx]++;
+                }
+
+                // Mower Logic
+                const hull = this.getHull();
+                const hasAutoSell = this.ownedUpgrades.includes('auto_sell');
+                const hasAutoFuel = this.ownedUpgrades.includes('auto_fuel');
+
+                // AUTOMATION CHECKS
+                if (this.mower.bag >= hull.bag) {
+                    if (hasAutoSell) this.sellClippings();
+                    else this.mower.state = 'BAG_FULL';
+                }
+                
+                if (this.mower.fuel <= 0) {
+                    if (hasAutoFuel && this.money >= 5) this.refuel();
+                    else this.mower.state = 'NO_FUEL';
+                }
+
+                if (this.mower.health <= 0) this.mower.state = 'BROKEN';
+
+                // MOVEMENT
+                if (this.mower.state === 'MOWING') {
+                    this.mower.moveTimer++;
+                    if (this.mower.moveTimer >= hull.speed) {
+                        this.mower.moveTimer = 0;
+                        this.moveMower();
+                    }
+                } else {
+                    // Try to resume if conditions met
+                    if (this.mower.fuel > 0 && this.mower.bag < hull.bag && this.mower.health > 0) {
+                        this.mower.state = 'MOWING';
+                    }
+                }
+
+                this.draw();
+                this.updateUI();
+                requestAnimationFrame((t) => this.loop(t));
+            }
+
+            moveMower() {
+                const hull = this.getHull();
+                let nx = this.mower.x + this.mower.dx;
+                let ny = this.mower.y + this.mower.dy;
+                let hitWall = false;
+
+                // Wall Collision
+                if (nx < 0 || nx >= this.gridW) { this.mower.dx *= -1; hitWall = true; }
+                if (ny < 0 || ny >= this.gridH) { this.mower.dy *= -1; hitWall = true; }
+
+                if (hitWall) {
+                    // Randomize direction slightly on bounce
+                    if (Math.random() > 0.5) this.mower.dy *= -1; 
+                    else this.mower.dx *= -1;
+                    return; // Don't move this frame
+                }
+
+                // Rock Collision
+                if (!hull.fly) {
+                    for(let r of this.rocks) {
+                        if (r.x === nx && r.y === ny) {
+                            // Damage
+                            let dmg = 10;
+                            if (this.ownedUpgrades.includes('shield')) dmg = 5;
+                            this.mower.health -= dmg;
+                            this.log("HIT ROCK! Damage taken.");
+                            
+                            // Bounce
+                            this.mower.dx *= -1;
+                            this.mower.dy *= -1;
+                            return;
+                        }
+                    }
+                }
+
+                // Move
+                this.mower.x = nx;
+                this.mower.y = ny;
+                this.mower.fuel -= 0.5;
+
+                // Mow (and adjacent tiles based on hull width)
+                this.cutGrass(this.mower.x, this.mower.y);
+                
+                // Wide Cutting Logic (Escape Velocity "Spread" weapons style)
+                if (hull.width > 0) {
+                    if (hull.width >= 4) { this.cutGrass(this.mower.x+1, this.mower.y); }
+                    if (hull.width >= 6) { this.cutGrass(this.mower.x-1, this.mower.y); }
+                }
+            }
+
+            cutGrass(x, y) {
+                if (x<0 || x>=this.gridW || y<0 || y>=this.gridH) return;
+                
+                if (this.grid[y][x] > 0) {
+                    this.grid[y][x] = 0;
+                    this.mower.bag++;
+                    // Particles (Simulated by drawing logic later)
+                }
+            }
+
+            // --- ACTIONS ---
+
+            sellClippings() {
+                if (this.mower.bag <= 0) return;
+                let val = this.mower.bag;
+                
+                // Eco Multiplier Upgrade
+                if (this.ownedUpgrades.includes('blade_sharpen')) val *= 1.5;
+                
+                val = Math.floor(val);
+                this.money += val;
+                this.mower.bag = 0;
+                this.spawnFloater(`+$${val}`);
+            }
+
+            refuel() {
+                if (this.money >= 5) {
+                    this.money -= 5;
+                    this.mower.fuel = this.getHull().tank;
+                }
+            }
+
+            repair() {
+                if (this.money >= 10) {
+                    this.money -= 10;
+                    this.mower.health = 100;
+                }
+            }
+
+            buyHull(id) {
+                const hull = HULLS.find(h => h.id === id);
+                if (this.money >= hull.cost) {
+                    this.money -= hull.cost;
+                    this.ownedHulls.push(id);
+                    this.equipHull(id);
+                    this.renderHulls();
+                    this.log(`Purchased ${hull.name}`);
+                }
+            }
+
+            equipHull(id) {
+                this.mower.hullId = id;
+                this.mower.fuel = this.getHull().tank; // Refuel on swap
+                this.log(`Equipped ${this.getHull().name}`);
+                this.renderHulls();
+            }
+
+            buyUpgrade(id) {
+                const up = UPGRADES.find(u => u.id === id);
+                if (this.money >= up.cost) {
+                    this.money -= up.cost;
+                    this.ownedUpgrades.push(id);
+                    this.renderUpgrades();
+                    this.log(`Installed ${up.name}`);
+                }
+            }
+
+            // --- DRAWING ---
+
+            draw() {
+                // Background
+                this.ctx.fillStyle = '#0a2a0a';
+                this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
+
+                // Grid
+                for(let y=0; y<this.gridH; y++) {
+                    for(let x=0; x<this.gridW; x++) {
+                        let v = this.grid[y][x];
+                        if (v===0) this.ctx.fillStyle = '#2d5a27'; // Cut
+                        else if (v===1) this.ctx.fillStyle = '#228B22'; // Med
+                        else this.ctx.fillStyle = '#006400'; // Tall
+
+                        let px = x*this.tileSize;
+                        let py = y*this.tileSize;
+                        this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
+                        
+                        // Detail for tall grass
+                        if (v===2) {
+                            this.ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                            this.ctx.fillRect(px+2, py+2, 2, 8);
+                            this.ctx.fillRect(px+8, py+5, 2, 6);
+                        }
+                    }
+                }
+
+                // Rocks
+                this.ctx.fillStyle = '#777';
+                for(let r of this.rocks) {
+                    let cx = r.x * this.tileSize + this.tileSize/2;
+                    let cy = r.y * this.tileSize + this.tileSize/2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(cx, cy, this.tileSize/2.5, 0, Math.PI*2);
+                    this.ctx.fill();
+                }
+
+                // Mower
+                const hull = this.getHull();
+                const mx = this.mower.x * this.tileSize;
+                const my = this.mower.y * this.tileSize;
+
+                // Shadow (for hover effect)
+                if (hull.fly) {
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    this.ctx.fillRect(mx+4, my+10, this.tileSize-8, this.tileSize-8);
+                    this.ctx.fillStyle = hull.color;
+                    this.ctx.fillRect(mx, my-4, this.tileSize, this.tileSize); // Float up
+                } else {
+                    this.ctx.fillStyle = hull.color;
+                    this.ctx.fillRect(mx, my, this.tileSize, this.tileSize);
+                }
+
+                // Engine light
+                this.ctx.fillStyle = this.mower.state === 'MOWING' ? '#0f0' : '#f00';
+                this.ctx.fillRect(mx+this.tileSize/2 - 2, my+2, 4, 4);
+            }
+
+            // --- UI HELPERS ---
+
+            updateUI() {
+                document.getElementById('money-display').innerText = `$${this.money}`;
+                document.getElementById('status-display').innerText = this.mower.state;
+                document.getElementById('status-display').style.color = this.mower.state === 'MOWING' ? '#4f4' : '#f44';
+                
+                const hull = this.getHull();
+                
+                // Bars/Values
+                const bagPct = Math.floor((this.mower.bag / hull.bag)*100);
+                const fuelPct = Math.floor((this.mower.fuel / hull.tank)*100);
+                
+                setVal('val-bag', `${this.mower.bag}/${hull.bag}`, bagPct >= 100);
+                setVal('val-fuel', `${Math.floor(this.mower.
