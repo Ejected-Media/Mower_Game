@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mower Tycoon: Arcade Edition</title>
+    <style>
+        :root {
+            --bg: #222;
+            --screen-bg: #1a4a1a;
+            --accent: #ffcc00;
+            --panel: #333;
+            --btn-gray: #444;
+            --text-main: #eee;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- GAME VIEW (The Screen) --- */
+        #game-container {
+            flex: 1; /* Takes all available space */
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            border-bottom: 4px solid #555;
+            overflow: hidden;
+        }
+
+        canvas {
+            background-color: var(--screen-bg);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            image-rendering: pixelated;
+        }
+
+        /* --- HUD OVERLAY --- */
+        #hud-overlay {
+            position: absolute;
+            top: 10px; left: 10px; right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .hud-badge {
+            background: rgba(0,0,0,0.8);
+            color: var(--accent);
+            padding: 5px 10px;
+            border: 1px solid #666;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .floater {
+            position: absolute;
+            color: #4f4;
+            font-weight: bold;
+            font-size: 20px;
+            pointer-events: none;
+            text-shadow: 2px 2px 0 #000;
+            animation: floatUp 1s ease-out forwards;
+        }
+        @keyframes floatUp { to { transform: translateY(-50px); opacity: 0; } }
+
+        /* --- CONTROLS AREA --- */
+        #controls-area {
+            height: 280px; /* Fixed height for controls */
+            background: var(--panel);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 -5px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Gauges */
+        .status-bar-row {
+            display: flex;
+            gap: 10px;
+            height: 20px;
+        }
+        .status-bar {
+            flex: 1;
+            background: #111;
+            border: 1px solid #555;
+            position: relative;
+        }
+        .fill { height: 100%; transition: width 0.2s; }
+        .fill.fuel { background: #29b6f6; width: 100%; }
+        .fill.bag { background: #ffa726; width: 0%; }
+        .fill.health { background: #ef5350; width: 100%; }
+        .bar-label {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            text-align: center;
+            font-size: 10px;
+            line-height: 18px;
+            color: white;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        /* Button Layout */
+        .arcade-controls {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+        }
+
+        /* D-PAD */
+        .dpad-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+            max-width: 180px;
+            aspect-ratio: 1;
+        }
+        .d-btn {
+            background: #555;
+            border: 2px solid #222;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #ccc;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #222;
+        }
+        .d-btn:active { transform: translateY(4px); box-shadow: none; background: #666; }
+        .d-up { grid-column: 2; grid-row: 1; }
+        .d-left { grid-column: 1; grid-row: 2; }
+        .d-right { grid-column: 3; grid-row: 2; }
+        .d-down { grid-column: 2; grid-row: 3; }
+
+        /* ACTION BUTTONS */
+        .action-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .big-btn {
+            flex: 1;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+        }
+        .big-btn:active { transform: translateY(4px); box-shadow: none; }
+        .btn-sell { background: #2e7d32; border: 2px solid #1b5e20; }
+        .btn-fuel { background: #0277bd; border: 2px solid #01579b; }
+        .btn-shop { background: #f9a825; border: 2px solid #f57f17; color: black; text-shadow: none; }
+
+        .btn-alert { animation: pulse 1s infinite; border-color: white; }
+        @keyframes pulse { 50% { filter: brightness(1.4); } }
+
+        /* --- SHOP MODAL --- */
+        #shop-modal {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 100;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #shop-modal.open { display: block; }
+        
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .close-btn { background: #c62828; color: white; border: none; padding: 5px 15px; cursor: pointer; font-weight: bold; }
+        
+        .shop-section { margin-bottom: 20px; }
+        .shop-title { color: #888; text-transform: uppercase; font-size: 12px; margin-bottom: 10px; }
+        
+        .shop-item {
+            background: #222;
+            border: 1px solid #444;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .buy-btn { background: var(--accent); color: black; border: none; padding: 5px 10px; cursor: pointer; font-weight: bold; }
+        .buy-btn:disabled { background: #444; color: #888; }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud-overlay">
+            <div class="hud-badge">$<span id="ui-money">0</span></div>
+            <div class="hud-badge" id="ui-contract">Backyard</div>
+        </div>
+    </div>
+
+    <div id="controls-area">
+        <!-- Status Bars -->
+        <div class="status-bar-row">
+            <div class="status-bar">
+                <div class="fill fuel" id="bar-fuel"></div>
+                <div class="bar-label">FUEL</div>
+            </div>
+            <div class="status-bar">
+                <div class="fill bag" id="bar-bag"></div>
+                <div class="bar-label">BAG</div>
+            </div>
+            <div class="status-bar">
+                <div class="fill health" id="bar-health"></div>
+                <div class="bar-label">HULL</div>
+            </div>
+        </div>
+
+        <!-- Main Controls -->
+        <div class="arcade-controls">
+            <!-- D-Pad -->
+            <div class="dpad-container">
+                <div class="d-btn d-up" onpointerdown="game.setDir(0, -1)">▲</div>
+                <div class="d-btn d-left" onpointerdown="game.setDir(-1, 0)">◀</div>
+                <div class="d-btn d-right" onpointerdown="game.setDir(1, 0)">▶</div>
+                <div class="d-btn d-down" onpointerdown="game.setDir(0, 1)">▼</div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="action-container">
+                <button class="big-btn btn-sell" id="btn-sell" onclick="game.sellClippings()">
+                    <span>SELL</span>
+                    <span style="font-size:12px" id="val-bag">$0</span>
+                </button>
+                <button class="big-btn btn-fuel" id="btn-fuel" onclick="game.refuel()">
+                    <span>REFUEL</span>
+                    <span style="font-size:12px">$5</span>
+                </button>
+                <button class="big-btn btn-shop" onclick="toggleShop()">
+                    <span>SHOP / MAPS</span>
+                    <span>≡</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HIDDEN SHOP MENU -->
+    <div id="shop-modal">
+        <div class="modal-header">
+            <h2 style="margin:0">MANAGEMENT</h2>
+            <button class="close-btn" onclick="toggleShop()">CLOSE X</button>
+        </div>
+
+        <div class="shop-section">
+            <div class="shop-title">Upgrades & Drones</div>
+            <div id="shop-upgrades-list"></div>
+        </div>
+
+        <div class="shop-section">
+            <div class="shop-title">Contracts</div>
+            <div id="shop-contracts-list"></div>
+        </div>
+        
+        <button class="big-btn btn-fuel" onclick="game.repair()">REPAIR HULL ($20)</button>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const CONTRACTS = [
+            { id: 'backyard', name: 'Backyard', w: 15, h: 20, rocks: 5, growth: 0.02, cost: 0, color: '#2d5a27' },
+            { id: 'park', name: 'City Park', w: 30, h: 25, rocks: 15, growth: 0.04, cost: 500, color: '#1b5e20' },
+            { id: 'golf', name: 'Golf Course', w: 50, h: 50, rocks: 40, growth: 0.08, cost: 5000, color: '#33691e' }
+        ];
+
+        const UPGRADES = [
+            { id: 'drone', name: 'Auto-Drone', cost: 250, desc: 'Roams and cuts grass', type: 'drone' },
+            { id: 'rider', name: 'Rider Hull', cost: 1000, desc: 'Faster, bigger tank', type: 'hull', speed: 8, tank: 300, bag: 100 },
+            { id: 'autosell', name: 'Auto-Seller', cost: 2000, desc: 'Sells bag automatically', type: 'tech' }
+        ];
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.container = document.getElementById('game-container');
+
+                this.money = 0;
+                this.contract = CONTRACTS[0];
+                this.ownedItems = [];
+                this.drones = [];
+                this.particles = [];
+                
+                this.mower = {
+                    x: 0, y: 0, dx: 1, dy: 1,
+                    fuel: 100, maxFuel: 100,
+                    bag: 0, maxBag: 20,
+                    health: 100,
+                    speed: 12, // Lower = Faster
+                    timer: 0,
+                    state: 'MOWING'
+                };
+
+                this.grid = [];
+                this.rocks = [];
+                this.tileSize = 20; // Calculated dynamically
+
+                // Binds
+                window.addEventListener('resize', () => this.resize());
+                window.addEventListener('keydown', (e) => {
+                    if(e.key === 'ArrowUp') this.setDir(0, -1);
+                    if(e.key === 'ArrowDown') this.setDir(0, 1);
+                    if(e.key === 'ArrowLeft') this.setDir(-1, 0);
+                    if(e.key === 'ArrowRight') this.setDir(1, 0);
+                });
+            }
+
+            init() {
+                this.loadSave();
+                this.loadLevel();
+                this.renderShop();
+                requestAnimationFrame(() => this.loop());
+                setInterval(() => this.save(), 5000);
+            }
+
+            resize() {
+                // Determine tile size to fit screen
+                const w = this.container.clientWidth;
+                const h = this.container.clientHeight;
+                
+                // Max tile size 40, Min 5
+                const tx = Math.floor(w / this.contract.w);
+                const ty = Math.floor(h / this.contract.h);
+                this.tileSize = Math.min(tx, ty, 40);
+                if (this.tileSize < 5) this.tileSize = 5;
+
+                this.canvas.width = this.tileSize * this.contract.w;
+                this.canvas.height = this.tileSize * this.contract.h;
+                
+                this.ctx.imageSmoothingEnabled = false;
+            }
+
+            loadLevel() {
+                this.resize();
+                // Reset Grid
+                this.grid = [];
+                this.rocks = [];
+                for(let y=0; y<this.contract.h; y++) {
+                    let row = [];
+                    for(let x=0; x<this.contract.w; x++) row.push(2);
+                    this.grid.push(row);
+                }
+                // Rocks
+                for(let i=0; i<this.contract.rocks; i++) {
+                    this.rocks.push({x: rand(0, this.contract.w), y: rand(0, this.contract.h)});
+                }
+                // Mower Center
+                this.mower.x = Math.floor(this.contract.w/2);
+                this.mower.y = Math.floor(this.contract.h/2);
+            }
+
+            setDir(x, y) {
+                if (this.mower.state === 'NO_FUEL' || this.mower.state === 'BROKEN') return;
+                this.mower.dx = x;
+                this.mower.dy = y;
+                if (this.mower.state !== 'BAG_FULL') this.mower.state = 'MOWING';
+                this.mower.timer = this.mower.speed; // Instant move
+            }
+
+            loop() {
+                // Growth
+                if(Math.random() < this.contract.growth) {
+                    let rx = rand(0, this.contract.w);
+                    let ry = rand(0, this.contract.h);
+                    if(this.grid[ry][rx] < 2) this.grid[ry][rx]++;
+                }
+
+                this.updateMower();
+                this.updateDrones();
+                this.updateParticles();
+                this.draw();
+                this.updateUI();
+
+                requestAnimationFrame(() => this.loop());
+            }
+
+            updateMower() {
+                if(this.ownedItems.includes('autosell') && this.mower.bag >= this.mower.maxBag) this.sellClippings();
+                
+                // States
+                if(this.mower.health <= 0) { this.mower.state = 'BROKEN'; return; }
+                if(this.mower.fuel <= 0) { this.mower.state = 'NO_FUEL'; return; }
+                if(this.mower.bag >= this.mower.maxBag) { this.mower.state = 'BAG_FULL'; return; }
+                
+                this.mower.state = 'MOWING';
+                this.mower.timer++;
+
+                if(this.mower.timer >= this.mower.speed) {
+                    this.mower.timer = 0;
+                    
+                    let nx = this.mower.x + this.mower.dx;
+                    let ny = this.mower.y + this.mower.dy;
+                    let hit = false;
+
+                    // Walls
+                    if(nx < 0 || nx >= this.contract.w) { this.mower.dx *= -1; hit = true; }
+                    if(ny < 0 || ny >= this.contract.h) { this.mower.dy *= -1; hit = true; }
+
+                    // Rocks
+                    if(!hit) {
+                        for(let r of this.rocks) {
+                            if(r.x === nx && r.y === ny) {
+                                this.mower.dx *= -1; this.mower.dy *= -1;
+                                this.mower.health -= 10;
+                                hit = true;
+                                this.spawnParticle(nx, ny, '#aaa');
+                                break;
+                            }
+                        }
+                    }
+
+                    if(!hit) {
+                        this.mower.x = nx; this.mower.y = ny;
+                        this.mower.fuel -= 0.1;
+                        this.cut(nx, ny, true);
+                    } else {
+                        // Randomize bounce
+                        if(Math.random() > 0.5) this.mower.dx *= -1;
+                    }
+                }
+            }
+
+            updateDrones() {
+                this.drones.forEach(d => {
+                    d.timer++;
+                    if(d.timer >= 20) { // Fixed drone speed
+                        d.timer = 0;
+                        // Random walk
+                        if(Math.random()<0.3) d.dx = Math.random()>0.5?1:-1;
+                        if(Math.random()<0.3) d.dy = Math.random()>0.5?1:-1;
+                        
+                        let nx = d.x + d.dx;
+                        let ny = d.y + d.dy;
+                        if(nx >= 0 && nx < this.contract.w && ny >= 0 && ny < this.contract.h) {
+                            d.x = nx; d.y = ny;
+                            this.cut(nx, ny, false); // Drones don't fill bag
+                        } else {
+                            d.dx *= -1; d.dy *= -1;
+                        }
+                    }
+                });
+            }
+
+            cut(x, y, fillBag) {
+                if(this.grid[y][x] > 0) {
+                    this.grid[y][x] = 0;
+                    this.spawnParticle(x, y, '#4f4');
+                    if(fillBag) this.mower.bag++;
+                    else this.money++; // Drones give direct cash
+                }
+            }
+
+            spawnParticle(x, y, color) {
+                this.particles.push({
+                    x: x * this.tileSize + this.tileSize/2,
+                    y: y * this.tileSize + this.tileSize/2,
+                    life: 1.0, color: color,
+                    vx: (Math.random()-0.5)*5, vy: (Math.random()-0.5)*5
+                });
+            }
+
+            updateParticles() {
+                for(let i=this.particles.length-1; i>=0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx; p.y += p.vy;
+                    p.life -= 0.1;
+                    if(p.life <= 0) this.particles.splice(i, 1);
+                }
+            }
+
+            draw() {
+                // Clear
+                this.ctx.fillStyle = '#111';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Grid
+                for(let y=0; y<this.contract.h; y++) {
+                    for(let x=0; x<this.contract.w; x++) {
+                        let v = this.grid[y][x];
+                        if(v === 0) continue; // Cut grass is transparent/black
+                        
+                        this.ctx.fillStyle = (v===1) ? '#2e7d32' : this.contract.color;
+                        this.ctx.fillRect(x*this.tileSize, y*this.tileSize, this.tileSize, this.tileSize);
+                        // 3D bevel
+                        this.ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                        this.ctx.fillRect(x*this.tileSize, y*this.tileSize + this.tileSize-4, this.tileSize, 4);
+                    }
+                }
+
+                // Rocks
+                this.ctx.fillStyle = '#777';
+                for(let r of this.rocks) {
+                    let cx = r.x * this.tileSize + this.tileSize/2;
+                    let cy = r.y * this.tileSize + this.tileSize/2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(cx, cy, this.tileSize/3, 0, Math.PI*2);
+                    this.ctx.fill();
+                }
+
+                // Mower
+                let mx = this.mower.x * this.tileSize;
+                let my = this.mower.y * this.tileSize;
+                this.ctx.fillStyle = (this.mower.state === 'MOWING') ? '#ffc107' : '#f44336';
+                this.ctx.fillRect(mx+2, my+2, this.tileSize-4, this.tileSize-4);
+
+                // Drones
+                this.ctx.fillStyle = '#03a9f4';
+                for(let d of this.drones) {
+                    let dx 
