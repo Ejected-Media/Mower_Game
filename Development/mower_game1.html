@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mower Tycoon: After Dark Edition</title>
+    <style>
+        :root {
+            --bg-color: #222;
+            --panel-bg: #333;
+            --accent: #ff9900;
+            --text-color: #eee;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* The Game World */
+        #game-view {
+            flex: 1;
+            position: relative;
+            background: #1a4a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border-bottom: 4px solid #444;
+        }
+
+        canvas {
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            image-rendering: pixelated; /* Retro feel */
+        }
+
+        /* Status Overlay (HUD) */
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            pointer-events: none;
+        }
+        .stat-row { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 5px; font-size: 14px;}
+        .stat-val { font-weight: bold; color: var(--accent); }
+
+        /* Control Panel */
+        #control-panel {
+            height: 45vh;
+            background-color: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #444;
+        }
+
+        /* Action Buttons (Big for Mobile) */
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn-action {
+            background: linear-gradient(to bottom, #555, #444);
+            border: 1px solid #666;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+        }
+        .btn-action:active { transform: scale(0.98); background: #333; }
+        .btn-action span { font-size: 12px; font-weight: normal; margin-top: 4px; color: #aaa; }
+        
+        .btn-green { background: linear-gradient(to bottom, #2e8b57, #246d44); border-color: #3cb371; }
+        .btn-blue { background: linear-gradient(to bottom, #4682b4, #36648b); border-color: #5f9ea0; }
+        .btn-disabled { opacity: 0.5; pointer-events: none; filter: grayscale(100%); }
+
+        /* Upgrade List */
+        .upgrade-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .upgrade-item {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .upg-info { display: flex; flex-direction: column; }
+        .upg-name { font-weight: bold; font-size: 14px; color: #ddd; }
+        .upg-desc { font-size: 11px; color: #888; }
+        .upg-buy {
+            background: #333;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            min-width: 60px;
+            text-align: center;
+        }
+        .upg-buy:hover { background: var(--accent); color: black; }
+
+        /* Alerts */
+        .alert-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(200, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            display: none;
+            pointer-events: none;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0.8; } }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-view">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="hud">
+            <div class="stat-row">Money: <span class="stat-val" id="disp-money">$0</span></div>
+            <div class="stat-row">Mower Status: <span class="stat-val" id="disp-status" style="color: lime">ACTIVE</span></div>
+        </div>
+
+        <div id="alert-fuel" class="alert-box">OUT OF FUEL</div>
+        <div id="alert-bag" class="alert-box">BAG FULL</div>
+    </div>
+
+    <div id="control-panel">
+        
+        <div class="section-title">Maintenance</div>
+        <div class="action-grid">
+            <button class="btn-action btn-green" id="btn-sell" onclick="sellClippings()">
+                SELL CLIPPINGS
+                <span id="label-bag">0 / 20 lbs</span>
+            </button>
+            <button class="btn-action btn-blue" id="btn-refuel" onclick="refuel()">
+                REFUEL ($5)
+                <span id="label-fuel">100%</span>
+            </button>
+        </div>
+
+        <div class="section-title">Hardware Upgrades</div>
+        <div class="upgrade-list" id="upgrade-container">
+            <!-- Populated by JS -->
+        </div>
+
+    </div>
+
+    <script>
+        // --- GAME CONFIG & STATE ---
+        const config = {
+            tileSize: 15,
+            gridW: 30,
+            gridH: 20,
+            growthSpeed: 0.05, // Chance per tick a tile grows back
+            baseRefuelCost: 5,
+            colors: {
+                grassLow: '#2d5a27', // Just cut
+                grassMed: '#228B22', // Growing
+                grassHigh: '#006400', // Tall (Valuable)
+                mower: '#ff5500',
+                mowerFull: '#cc3300'
+            }
+        };
+
+        const state = {
+            money: 15,
+            grid: [], // 0 = cut, 1 = med, 2 = tall
+            lastTick: 0
+        };
+
+        // The Mower Object (The "Ship")
+        const mower = {
+            x: 0,
+            y: 0,
+            dirX: 1, // Moving Right
+            dirY: 1, // Moving Down
+            
+            // Stats (Upgradable)
+            levelEngine: 1,  // Speed
+            levelTank: 1,    // Fuel Capacity
+            levelBag: 1,     // Grass Capacity
+            levelBlades: 1,  // Efficiency (Not implemented visually, just value)
+
+            // Dynamic Values
+            currentFuel: 100,
+            currentBag: 0,
+            
+            // Methods for stats
+            getMaxFuel: () => 100 + (mower.levelTank * 50),
+            getMaxBag: () => 20 + (mower.levelBag * 20),
+            getSpeed: () => 8 - mower.levelEngine, // Lower is faster (frames per move)
+            
+            // Internal
+            moveTimer: 0
+        };
+
+        const upgrades = [
+            { id: 'eng', name: 'Photon Motor', type: 'engine', cost: 50, desc: 'Increases movement speed' },
+            { id: 'tank', name: 'Expanded Tank', type: 'tank', cost: 30, desc: 'Operate longer between refuels' },
+            { id: 'bag', name: 'Compression Bag', type: 'bag', cost: 40, desc: 'Hold more clippings' },
+            { id: 'blade', name: 'Diamond Blades', type: 'blades', cost: 100, desc: 'Grass sells for more' }
+        ];
+
+        // --- ENGINE ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function init() {
+            // Resize Canvas
+            canvas.width = config.gridW * config.tileSize;
+            canvas.height = config.gridH * config.tileSize;
+
+            // Init Grid
+            for(let y=0; y<config.gridH; y++) {
+                let row = [];
+                for(let x=0; x<config.gridW; x++) {
+                    row.push(2); // Start with tall grass
+                }
+                state.grid.push(row);
+            }
+
+            // Init Mower
+            mower.currentFuel = mower.getMaxFuel();
+            mower.currentBag = 0;
+            mower.x = Math.floor(config.gridW / 2);
+            mower.y = Math.floor(config.gridH / 2);
+
+            renderUpgrades();
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameLoop(timestamp) {
+            update(timestamp);
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(timestamp) {
+            // 1. Grass Growth (Nature fights back)
+            if (Math.random() < 0.2) { // Occasionally process growth
+                for(let i=0; i<3; i++) { // Grow 3 random tiles
+                    let rx = Math.floor(Math.random() * config.gridW);
+                    let ry = Math.floor(Math.random() * config.gridH);
+                    if (state.grid[ry][rx] < 2) {
+                        state.grid[ry][rx]++;
+                    }
+                }
+            }
+
+            // 2. Mower Logic
+            
+            // Check Limits
+            const isFuelEmpty = mower.currentFuel <= 0;
+            const isBagFull = mower.currentBag >= mower.getMaxBag();
+
+            // Status alerts
+            document.getElementById('alert-fuel').style.display = isFuelEmpty ? 'block' : 'none';
+            document.getElementById('alert-bag').style.display = isBagFull ? 'block' : 'none';
+
+            let statusText = "ACTIVE";
+            let statusColor = "lime";
+
+            if (isFuelEmpty) { statusText = "NO FUEL"; statusColor = "red"; }
+            else if (isBagFull) { statusText = "BAG FULL"; statusColor = "orange"; }
+            else {
+                // Movement
+                mower.moveTimer++;
+                if (mower.moveTimer >= mower.getSpeed()) {
+                    mower.moveTimer = 0;
+                    moveMower();
+                }
+            }
+
+            document.getElementById('disp-status').innerText = statusText;
+            document.getElementById('disp-status').style.color = statusColor;
+        }
+
+        function moveMower() {
+            // Predict next spot
+            let nextX = mower.x + mower.dirX;
+            let nextY = mower.y + mower.dirY;
+            let bounced = false;
+
+            // Wall Bouncing (Screensaver Logic)
+            if (nextX < 0 || nextX >= config.gridW) {
+                mower.dirX *= -1;
+                bounced = true;
+            }
+            if (nextY < 0 || nextY >= config.gridH) {
+                mower.dirY *= -1;
+                bounced = true;
+            }
+
+            if (bounced) {
+                // Add a little chaos so it doesn't get stuck in simple loops
+                if(Math.random() > 0.8) mower.dirX *= -1;
+            } else {
+                mower.x += mower.dirX;
+                mower.y += mower.dirY;
+            }
+
+            // Consumption
+            mower.currentFuel--;
+
+            // Mowing Action
+            let tileVal = state.grid[mower.y][mower.x];
+            if (tileVal > 0) {
+                // Cut it
+                state.grid[mower.y][mower.x] = 0;
+                // Add to bag (Tall grass fills bag faster? No, let's keep it simple: 1 unit per tile)
+                // Actually, let's say tall grass = 1 unit.
+                mower.currentBag++;
+            }
+            
+            updateUI();
+        }
+
+        function draw() {
+            // Draw Grass
+            for(let y=0; y<config.gridH; y++) {
+                for(let x=0; x<config.gridW; x++) {
+                    let val = state.grid[y][x];
+                    if (val === 0) ctx.fillStyle = config.colors.grassLow;
+                    else if (val === 1) ctx.fillStyle = config.colors.grassMed;
+                    else ctx.fillStyle = config.colors.grassHigh;
+                    
+                    ctx.fillRect(x*config.tileSize, y*config.tileSize, config.tileSize, config.tileSize);
+                    
+                    // Grid lines (subtle)
+                    ctx.strokeStyle = "rgba(0,0,0,0.1)";
+                    ctx.strokeRect(x*config.tileSize, y*config.tileSize, config.tileSize, config.tileSize);
+                }
+            }
+
+            // Draw Mower
+            ctx.fillStyle = mower.currentBag >= mower.getMaxBag() ? config.colors.mowerFull : config.colors.mower;
+            let mx = mower.x * config.tileSize;
+            let my = mower.y * config.tileSize;
+            
+            // Body
+            ctx.fillRect(mx+2, my+2, config.tileSize-4, config.tileSize-4);
+            
+            // Wheels
+            ctx.fillStyle = "#111";
+            ctx.fillRect(mx, my, 4, 4);
+            ctx.fillRect(mx+config.tileSize-4, my, 4, 4);
+            ctx.fillRect(mx, my+config.tileSize-4, 4, 4);
+            ctx.fillRect(mx+config.tileSize-4, my+config.tileSize-4, 4, 4);
+        }
+
+        // --- PLAYER ACTIONS ---
+
+        window.sellClippings = function() {
+            if (mower.currentBag === 0) return;
+            
+            // Calculate Value (Base value + Blade Multiplier)
+            let value = mower.currentBag * (1 + (mower.levelBlades * 0.5));
+            value = Math.floor(value);
+            
+            state.money += value;
+            mower.currentBag = 0;
+            
+            // Visual feedback
+            updateUI();
+            checkUpgradeAffordability();
+        };
+
+        window.refuel = function() {
+            if (state.money >= config.baseRefuelCost) {
+                state.money -= config.baseRefuelCost;
+                mower.currentFuel = mower.getMaxFuel();
+                updateUI();
+                checkUpgradeAffordability();
+            } else {
+                alert("Not enough money to refuel! (Wait, how did you get softlocked? Just kidding, here's a bail out)");
+                state.money += 5; // Bailout mechanic
+            }
+        };
+
+        window.buyUpgrade = function(index) {
+            let u = upgrades[index];
+            if (state.money >= u.cost) {
+                state.money -= u.cost;
+                
+                // Apply Stats
+                if (u.type === 'engine') mower.levelEngine++;
+                if (u.type === 'tank') mower.levelTank++;
+                if (u.type === 'bag') mower.levelBag++;
+                if (u.type === 'blades') mower.levelBlades++;
+
+                // Increase Cost for next tier (Escape Velocity style exponential cost)
+                u.cost = Math.floor(u.cost * 1.5);
+                
+                renderUpgrades();
+                updateUI();
+            }
+        };
+
+        function updateUI() {
+            document.getElementById('disp-money').innerText = `$${state.money}`;
+            
+            // Bag Button
+            const btnSell = document.getElementById('btn-sell');
+            document.getElementById('label-bag').innerText = `${mower.currentBag} / ${mower.getMaxBag()} lbs`;
+            if (mower.currentBag === 0) btnSell.classList.add('btn-disabled');
+            else btnSell.classList.remove('btn-disabled');
+
+            // Fuel Button
+            const btnFuel = document.getElementById('btn-refuel');
+            let fuelPct = Math.floor((mower.currentFuel / mower.getMaxFuel()) * 100);
+            document.getElementById('label-fuel').innerText = `${fuelPct}%`;
+            
+            if (fuelPct > 90 || state.money < config.baseRefuelCost) btnFuel.classList.add('btn-disabled');
+            else btnFuel.classList.remove('btn-disabled');
+            
+            checkUpgradeAffordability();
+        }
+
+        function checkUpgradeAffordability() {
+            upgrades.forEach((u, i) => {
+                const btn = document.getElementById(`buy-btn-${i}`);
+                if(btn) {
+                    if (state.money < u.cost) {
+                        btn.style.opacity = '0.5';
+                        btn.style.pointerEvents = 'none';
+                        btn.innerText = `$${u.cost}`;
+                    } else {
+                        btn.style.opacity = '1';
+                        btn.style.pointerEvents = 'auto';
+                        btn.innerText = `Buy $${u.cost}`;
+                    }
+                }
+            });
+        }
+
+        function renderUpgrades() {
+            const container = document.getElementById('upgrade-container');
+            container.innerHTML = '';
+
+            upgrades.forEach((u, index) => {
+                let currentLvl = 1;
+                if (u.type === 'engine') currentLvl = mower.levelEngine;
+                if (u.type === 'tank') currentLvl = mower.levelTank;
+                if (u.type === 'bag') currentLvl = mower.levelBag;
+                if (u.type === 'blades') currentLvl = mower.levelBlades;
+
+                const html = `
+                <div class="upgrade-item">
+                    <div class="upg-info">
+                        <span class="upg-name">${u.name} (Lvl ${currentLvl})</span>
+                        <span class="upg-desc">${u.desc}</span>
+                    </div>
+                    <div class="upg-buy" id="buy-btn-${index}" onclick="buyUpgrade(${index})">
+                        $${u.cost}
+                    </div>
+                </div>
+                `;
+                container.innerHTML += html;
+            });
+        }
+
+        // Boot
+        init();
+
+    </script>
+</body>
+</html>
+
+  
