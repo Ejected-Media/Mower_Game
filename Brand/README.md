@@ -1,3 +1,11 @@
+# Mower_Game brand ~
+
+
+![°](https://github.com/Ejected-Media/Mower_Game/blob/main/Brand/pics/1764630115903.jpg "$")
+
+
+___
+
 This is a fantastic combination of influences. It’s a very specific, highly engaging niche.
 You are essentially trying to merge the crunchy, utilitarian, beige-box aesthetic of System 7 era Macintosh with the soft, character-driven, dopamine-hit cuteness of Sanrio and Pokémon.
 This fusion creates a genre we might call "Kawaii-Retro Computing."
