@@ -3,6 +3,7 @@
 
 ![°](https://github.com/Ejected-Media/Mower_Game/blob/main/Brand/pics/1764630115903.jpg "$")
 
+![°](https://github.com/Ejected-Media/Mower_Game/blob/main/Brand/pics/1764631849368.jpg "$")
 
 ___
 
